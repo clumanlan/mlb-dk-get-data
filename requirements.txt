@@ -1,0 +1,5 @@
+awswrangler==2.15.1
+boto3==1.20.25
+pandas==1.4.2
+pyarrow==7.0.0
+MLB-StatsAPI==1.4.2
