@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ECR_IMAGE_TAG: latest
-      AWS_DEFAULT_REGION: us-east-2
+      AWS_DEFAULT_REGION: us-east-1
       AWS_LAMBDA_FUNC_NAME: mlbdk-get-data-function
       AWS_ECR_REPOSITORY_NAME: 	mlb-dk-get-data
 
