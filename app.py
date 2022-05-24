@@ -291,7 +291,7 @@ def handler(event, context):
     rel_game_pks = get_season_n_playoff_gamepks(last_date_pulled)
     game_df_complete = get_game_info(rel_game_pks)
     batter_stats_df, pitcher_stats_df, gameboxsummary_df, missing_gamebox_df = get_player_boxscore_stats(rel_game_pks)
-    
+    time.sleep(45) # sleep so previous function has enough time to write to disk
     write_data_to_s3(game_df_complete, batter_stats_df, pitcher_stats_df, gameboxsummary_df, missing_gamebox_df)
 
 handler(None, None)
