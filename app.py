@@ -156,7 +156,7 @@ def get_game_info(recent_game_pks):
 
         game_df_list.append(game_df)
 
-        time.sleep(1.3)
+        time.sleep(1.8)
     
     game_df_complete = pd.concat(game_df_list)
 
