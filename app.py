@@ -2,7 +2,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import statsapi
-from datetime import datetime
+from datetime import datetime, timedelta
 import awswrangler as wr
 import boto3 
 import json
@@ -64,7 +64,7 @@ def get_season_n_playoff_gamepks(start_date):
     game_type_list = []
     season_list = []
 
-    end_date = datetime.today().strftime('%Y-%m-%d')
+    end_date = (datetime.today() - timedelta(1)).strftime('%Y-%m-%d') 
 
     sched = statsapi.get("schedule", {"sportId": 1, "startDate": start_date, "endDate": end_date, "fields": "dates,date,games,gamePk, gameType, season"}) #gametype parameter doesn't work
 
@@ -85,14 +85,21 @@ def get_season_n_playoff_gamepks(start_date):
 
 
 # get basic game info: time, place, duration  --------------------------------------------------------------------
-def get_game_info(recent_game_pks):
+def get_game_info(rel_game_pks):
     game_df_list = []
 
-    for pk in recent_game_pks:
+    for pk in rel_game_pks:
         print(pk)
     
         game = statsapi.get("game", {"gamePk":pk})
     
+        end_date = (datetime.today() - timedelta(1)).strftime('%Y-%m-%d') 
+
+        if game['gameData']['datetime']['officialDate'] > end_date: # some future rescheduled games get snuck in to rel_game_pks
+            print('Future Game Skipped: ')
+            print(pk)
+            continue
+
         gamedata = game['gameData']
  
         gamedata_keys = ['pk', 'type', 'doubleHeader', 'gamedayType', 'tiebreaker', 'gameNumber', 'season']
@@ -149,22 +156,64 @@ def get_game_info(recent_game_pks):
         home_dict_filtered['home_ties'] = home_leaguerecord_dict['ties']
         home_dict_filtered['home_pct'] = home_leaguerecord_dict['pct']
 
+        # winner/loser pitcher data -----------------------------------------------
+        game_livedata = game['liveData']
+        winner_dict = game_livedata['decisions']['winner']
+        loser_dict = game_livedata['decisions']['loser']
+
+        pitcher_dict = {}
+        pitcher_dict['pitcher_winner_playerid'] = winner_dict['id']
+        pitcher_dict['pitcher_winner_playername'] = winner_dict['fullName']
+        pitcher_dict['pitcher_loser_playerid'] = loser_dict['id']
+        pitcher_dict['pitcher_loser_playername'] = loser_dict['fullName']
+        
+
+        # get final line score pitching and batting (runs, hits, errors, left on base) data ------------------------------------
+        boxscore = game_livedata['boxscore']['teams']
+
+        # get pitching linescore (summary of pitching for the game) ----------------------------------
+        away_pitching_dict = boxscore['away']['teamStats']['pitching']
+        away_pitching_oldkeys = list(away_pitching_dict.keys())
+        away_pitching_newkeys = ['away_' + s for s in away_pitching_oldkeys]
+        away_pitching_vals = list(away_pitching_dict.values())
+        away_pitching_dict = {k: v for k, v in zip(away_pitching_newkeys, away_pitching_vals)}
+
+        home_pitching_dict = boxscore['home']['teamStats']['pitching']
+        home_pitching_oldkeys = list(home_pitching_dict.keys())
+        home_pitching_newkeys = ['away_' + s for s in home_pitching_oldkeys]
+        home_pitching_vals = list(home_pitching_dict.values())
+        home_pitching_dict = {k: v for k, v in zip(home_pitching_newkeys, home_pitching_vals)}
+
+        # get batting linescore (summary of batting for the game) ------------------------------------
+
+        away_batting_dict = boxscore['away']['teamStats']['batting']
+        away_batting_oldkeys = list(away_batting_dict.keys())
+        away_batting_newkeys = ['away_' + s for s in away_batting_oldkeys]
+        away_batting_vals = list(away_batting_dict.values())
+        away_batting_dict = {k: v for k, v in zip(away_batting_newkeys, away_batting_vals)}
+
+        home_batting_dict = boxscore['home']['teamStats']['batting']
+        home_batting_oldkeys = list(home_batting_dict.keys())
+        home_batting_newkeys = ['home_' + s for s in home_batting_oldkeys]
+        home_batting_vals = list(home_batting_dict.values())
+        home_batting_dict = {k: v for k, v in zip(home_batting_newkeys, home_batting_vals)}
+
+
         dicts = {**gamedata_dict, **datetime_dict, **status_dict, **gameinfo_dict, **venue_dict_filtered, 
-            **fieldinfo_dict, **weather_dict, **away_dict_filtered, **home_dict_filtered}
+            **fieldinfo_dict, **weather_dict, **away_dict_filtered, **home_dict_filtered, **pitcher_dict, **away_pitching_dict, **home_pitching_dict,
+            **away_batting_dict, **home_batting_dict}
 
         game_df = pd.DataFrame(dicts,index=[0])
 
         game_df_list.append(game_df)
 
-        time.sleep(1.8)
-    
     game_df_complete = pd.concat(game_df_list)
 
     return game_df_complete
 
 # get player boxscore stats for each gamepk ------------------------------------------------------------------
 
-def get_player_boxscore_stats(recent_game_pks):
+def get_player_boxscore_stats(rel_game_pks):
 
     batter_stats_list = []
     pitcher_stats_list = []
@@ -173,7 +222,7 @@ def get_player_boxscore_stats(recent_game_pks):
     pk_w_missing_player_list = []
 
 
-    for pk in recent_game_pks:
+    for pk in rel_game_pks:
         print(pk) 
 
         try:
@@ -224,6 +273,9 @@ def get_player_boxscore_stats(recent_game_pks):
 
         gameboxsummary_df = pd.DataFrame(boxscore['gameBoxInfo'])
         gameboxsummary_df['gamepk'] = pk
+
+        print('batter boxscore rows: ' + str(batter_stats_complete_wpersonid.shape[0]))
+        print('pitcher boxscore rows: ' + str(pitcher_stats_complete.shape[0]))
 
         batter_stats_list.append(batter_stats_complete_wpersonid)
         pitcher_stats_list.append(pitcher_stats_complete)
@@ -290,6 +342,7 @@ def handler(event, context):
     last_date_pulled = get_most_recent_date()
     rel_game_pks = get_season_n_playoff_gamepks(last_date_pulled)
     game_df_complete = get_game_info(rel_game_pks)
+
     batter_stats_df, pitcher_stats_df, gameboxsummary_df, missing_gamebox_df = get_player_boxscore_stats(rel_game_pks)
     time.sleep(45) # sleep so previous function has enough time to write to disk
     write_data_to_s3(game_df_complete, batter_stats_df, pitcher_stats_df, gameboxsummary_df, missing_gamebox_df)
