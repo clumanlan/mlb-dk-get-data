@@ -51,8 +51,10 @@ def get_most_recent_date():
         season_files[key] = last_modified
 
     season_file_df = pd.DataFrame(season_files.items(), columns=['key', 'last_modified_date'])
-
-    return season_file_df['last_modified_date'].max().date().strftime('%Y-%m-%d')
+    
+    file_date = season_file_df['last_modified_date'].max().date().strftime('%Y-%m-%d')
+    
+    return file_date
 
 
 
@@ -340,6 +342,8 @@ def write_data_to_s3(game_df_complete, batter_stats_df, pitcher_stats_df, gamebo
 def handler(event, context):
     
     last_date_pulled = get_most_recent_date()
+    print(last_date_pulled)
+    
     rel_game_pks = get_season_n_playoff_gamepks(last_date_pulled)
     game_df_complete = get_game_info(rel_game_pks)
 
