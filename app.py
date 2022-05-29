@@ -161,6 +161,9 @@ def get_game_info(rel_game_pks):
 
         # winner/loser pitcher data -----------------------------------------------
         game_livedata = game['liveData']
+        if 'decisions' not in game_livedata: # some games are postponed but still show up on the date
+            continue 
+
         winner_dict = game_livedata['decisions']['winner']
         loser_dict = game_livedata['decisions']['loser']
 
@@ -342,10 +345,8 @@ def write_data_to_s3(game_df_complete, batter_stats_df, pitcher_stats_df, gamebo
 
 def handler(event, context):
     
-    yesterday = (datetime.today() - timedelta(1)).strftime('%Y-%m-%d') 
     last_date_pulled = get_most_recent_date()
-
-    if last_date_pulled >= yesterday:
+    if last_date_pulled > datetime.today():
         return { 
         'message' : 'Game data up to date.'
     }
