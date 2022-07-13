@@ -346,7 +346,7 @@ def write_data_to_s3(game_df_complete, batter_stats_df, pitcher_stats_df, gamebo
 def handler(event, context):
     
     last_date_pulled = get_most_recent_date()
-    if last_date_pulled > datetime.today():
+    if last_date_pulled > datetime.today().strftime('%Y-%m-%d'):
         return { 
         'message' : 'Game data up to date.'
     }
